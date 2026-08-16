@@ -27,6 +27,14 @@ def init_db():
         )
     ''')
     
+    # Table to track cooldown timestamps for /recommend
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS recommend_cooldowns (
+            discord_id INTEGER PRIMARY KEY,
+            last_used_timestamp REAL
+        )
+    ''')
+    
     # Table to track active recommendations
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS recommendations (
@@ -61,6 +69,37 @@ def get_roblox_data(discord_id: int):
     row = cursor.fetchone()
     conn.close()
     return row
+
+# --- Cooldown Helpers ---
+def get_cooldown_remaining(discord_id: int) -> float:
+    """Returns remaining cooldown seconds if user is on 2-minute cooldown, else 0."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('SELECT last_used_timestamp FROM recommend_cooldowns WHERE discord_id = ?', (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row is None:
+        return 0.0
+        
+    now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    elapsed = now - row[0]
+    cooldown_time = 120.0  # 2 minutes = 120 seconds
+    
+    if elapsed < cooldown_time:
+        return cooldown_time - elapsed
+    return 0.0
+
+def update_cooldown(discord_id: int):
+    now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT OR REPLACE INTO recommend_cooldowns (discord_id, last_used_timestamp)
+        VALUES (?, ?)
+    ''', (discord_id, now))
+    conn.commit()
+    conn.close()
 
 # --- Weekly Limit Helpers ---
 def can_recommend(discord_id: int) -> bool:
