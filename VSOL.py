@@ -66,17 +66,25 @@ class RobloxConfirmView(discord.ui.View):
 
     @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Acknowledge immediately to avoid 404 Unknown interaction errors
+        await interaction.response.defer()
+        
         await safe_delay()
         database.link_roblox_user(interaction.user.id, self.roblox_username, self.roblox_id)
+        
         for child in self.children:
             child.disabled = True
-        await interaction.response.edit_message(content="Roblox account linked successfully.", embed=None, view=self)
+            
+        await interaction.edit_original_response(content="Roblox account linked successfully.", embed=None, view=self)
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        
         for child in self.children:
             child.disabled = True
-        await interaction.response.edit_message(content="Verification cancelled.", embed=None, view=self)
+            
+        await interaction.edit_original_response(content="Verification cancelled.", embed=None, view=self)
 
 class RobloxInputModal(discord.ui.Modal, title="Link Roblox Account"):
     rblx_input = discord.ui.TextInput(
