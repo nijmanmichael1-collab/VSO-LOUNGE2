@@ -149,6 +149,13 @@ async def recommend(interaction: discord.Interaction, user: discord.Member, reas
         await interaction.followup.send("You cannot use this command.", ephemeral=True)
         return
 
+    # Check 2-minute spam cooldown
+    remaining_cooldown = database.get_cooldown_remaining(interaction.user.id)
+    if remaining_cooldown > 0:
+        await interaction.followup.send(f"Please wait {int(remaining_cooldown)} seconds before making another recommendation.", ephemeral=True)
+        return
+
+    # Check 5 per week limit
     if not database.can_recommend(interaction.user.id):
         await interaction.followup.send("You reached your limit of 5 recommendations this week.", ephemeral=True)
         return
@@ -189,6 +196,7 @@ async def recommend(interaction: discord.Interaction, user: discord.Member, reas
         reason=reason
     )
     database.add_recommend_count(interaction.user.id)
+    database.update_cooldown(interaction.user.id)
 
     try:
         await user.send(embed=embed)
