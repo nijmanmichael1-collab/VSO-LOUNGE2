@@ -1,13 +1,31 @@
+import os
+import threading
+from datetime import datetime
+from flask import Flask
 import discord
 from discord import app_commands
 from discord.ext import commands
 import aiohttp
-from datetime import datetime
 import database
 
 # Initialize Database
 database.init_db()
 
+# --- Lightweight Web Server for Render ---
+app = Flask(__name__)
+
+@app.route("/")
+def health_check():
+    return "Bot is active!", 200
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+# Run web server in a separate thread so it doesn't block the Discord bot
+threading.Thread(target=run_web_server, daemon=True).start()
+
+# --- Discord Bot Setup ---
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -109,7 +127,6 @@ async def verify(interaction: discord.Interaction):
         description="Link Roblox account to get a reccomendation to VSO",
         color=discord.Color.blue()
     )
-    # Set explicitly to empty as requested
     embed.set_footer(text="") 
 
     view = VerifyPanelView()
@@ -169,4 +186,6 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
 
     await interaction.response.send_message("Recommendation submitted successfully!", ephemeral=True)
 
+# Fetch token from environment variable or direct string
+TOKEN = os.environ.get("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
 bot.run("MTUzNjM0MTU3MjM0ODU1MTIyOA.GoDmRm.FDH3YYqfJc2z3zJDcEP1OVhGLEb4imiPEje1fU")
