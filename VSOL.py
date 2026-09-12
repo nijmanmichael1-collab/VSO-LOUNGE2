@@ -92,7 +92,7 @@ class VerifyModal(discord.ui.Modal, title="Link Roblox Account"):
         roblox_id, real_name = await fetch_roblox_user(roblox_username)
 
         if not roblox_id:
-            await interaction.followup.send("Roblox user not found. Check spelling and try again.")
+            await interaction.followup.send("Roblox user not found. Check spelling and try again.", ephemeral=True)
             return
 
         avatar_url = await fetch_roblox_avatar(roblox_id)
@@ -106,7 +106,7 @@ class VerifyModal(discord.ui.Modal, title="Link Roblox Account"):
             embed.set_thumbnail(url=avatar_url)
 
         view = ConfirmView(real_name, roblox_id)
-        await interaction.followup.send(embed=embed, view=view)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 class VerifyPanelView(discord.ui.View):
     def __init__(self):
@@ -150,6 +150,15 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
         await interaction.followup.send("You do not have permission to use this command.")
         return
 
+    if interaction.user.id == recommended.id:
+        await interaction.followup.send("You cannot recommend yourself!")
+        return
+
+    can_recommend, error_msg = database.check_and_update_limit(interaction.user.id, max_limit=5)
+    if not can_recommend:
+        await interaction.followup.send(error_msg)
+        return
+
     target_data = database.get_user(recommended.id)
     if not target_data:
         await interaction.followup.send("This user has not linked their Roblox account yet!")
@@ -174,7 +183,6 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
     channel = bot.get_channel(RECOMMEND_CHANNEL_ID)
     if channel:
         msg = await channel.send(embed=embed)
-        # Store message ID to allow editing on /accept or /decline
         database.save_recommendation(recommended.id, msg.id)
     else:
         await interaction.followup.send("Recommendation channel not found.")
@@ -193,7 +201,6 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
 async def accept(interaction: discord.Interaction, user: discord.Member):
     await interaction.response.defer(ephemeral=True)
 
-    # Check if user has a recommendation embed in channel
     msg_id = database.get_recommendation(user.id)
     channel = bot.get_channel(RECOMMEND_CHANNEL_ID)
 
@@ -208,7 +215,6 @@ async def accept(interaction: discord.Interaction, user: discord.Member):
         except Exception:
             pass
 
-    # DM User
     try:
         await user.send("🎉 You have been accepted into VSO!")
     except discord.Forbidden:
@@ -222,7 +228,6 @@ async def accept(interaction: discord.Interaction, user: discord.Member):
 async def decline(interaction: discord.Interaction, user: discord.Member):
     await interaction.response.defer(ephemeral=True)
 
-    # Check if user has a recommendation embed in channel
     msg_id = database.get_recommendation(user.id)
     channel = bot.get_channel(RECOMMEND_CHANNEL_ID)
 
@@ -237,7 +242,6 @@ async def decline(interaction: discord.Interaction, user: discord.Member):
         except Exception:
             pass
 
-    # DM User
     try:
         await user.send("You have been declined into VSO.")
     except discord.Forbidden:
@@ -262,7 +266,7 @@ async def dm(interaction: discord.Interaction, user: discord.Member, message: st
     except discord.Forbidden:
         await interaction.response.send_message("Failed to send DM. The user's DMs might be closed.", ephemeral=True)
 
-# Error handlers for missing admin permissions
+# Error handler for missing admin permissions
 @accept.error
 @decline.error
 @say.error
