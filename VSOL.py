@@ -1,7 +1,5 @@
 import os
-import threading
 from datetime import datetime
-from flask import Flask
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -11,29 +9,12 @@ import database
 # Initialize Database
 database.init_db()
 
-# --- Lightweight Web Server for Render ---
-app = Flask(__name__)
-
-@app.route("/")
-def health_check():
-    return "Bot is active!", 200
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
-
-# Run web server in a separate thread so it doesn't block the Discord bot
-threading.Thread(target=run_web_server, daemon=True).start()
-
-# --- Discord Bot Setup ---
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# IDs setup
 ALLOWED_ROLE_ID = 1474378842520031397
 RECOMMEND_CHANNEL_ID = 1513182544550690910
 
-# --- Helper Roblox API Functions ---
 async def fetch_roblox_user(username: str):
     url = "https://users.roblox.com/v1/usernames/users"
     async with aiohttp.ClientSession() as session:
@@ -55,7 +36,6 @@ async def fetch_roblox_avatar(roblox_id: int):
                     return data["data"][0].get("imageUrl")
     return None
 
-# --- UI Components for Verification ---
 class ConfirmView(discord.ui.View):
     def __init__(self, roblox_username: str, roblox_id: int):
         super().__init__(timeout=60)
@@ -112,10 +92,9 @@ class VerifyPanelView(discord.ui.View):
     async def link_roblox(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(VerifyModal())
 
-# --- Commands ---
 @bot.event
 async def on_ready():
-    bot.add_view(VerifyPanelView()) # Keeps panel button working across restarts
+    bot.add_view(VerifyPanelView())
     await bot.tree.sync()
     print(f"Logged in as {bot.user}")
 
@@ -140,13 +119,11 @@ async def verify_error(interaction: discord.Interaction, error: app_commands.App
 
 @bot.tree.command(name="recommend", description="...")
 async def recommend(interaction: discord.Interaction, recommended: discord.Member, reason: str):
-    # Check for specific role requirement
     user_role_ids = [role.id for role in interaction.user.roles]
     if ALLOWED_ROLE_ID not in user_role_ids:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
         return
 
-    # Check if the recommended user is verified in the database
     target_data = database.get_user(recommended.id)
     if not target_data:
         await interaction.response.send_message("This user has not linked their Roblox account yet!", ephemeral=True)
@@ -155,7 +132,6 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
     roblox_username, roblox_id = target_data
     profile_link = f"https://www.roblox.com/users/{roblox_id}/profile"
 
-    # Build exact Embed layout requested
     embed = discord.Embed(
         title=f"📩 Recommendation Request by {interaction.user.name} (@{interaction.user.name})",
         color=discord.Color.blue()
@@ -166,11 +142,9 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
     embed.add_field(name="recommended", value=recommended.mention, inline=True)
     embed.add_field(name="reason", value=reason, inline=False)
 
-    # Footer timestamp matching the format in reference image
     current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     embed.set_footer(text=f"{current_time} | Virtual Soccer Organization")
 
-    # Target designated channel
     channel = bot.get_channel(RECOMMEND_CHANNEL_ID)
     if channel:
         await channel.send(embed=embed)
@@ -178,14 +152,12 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
         await interaction.response.send_message("Recommendation channel not found.", ephemeral=True)
         return
 
-    # Direct Message the recommended user
     try:
         await recommended.send(embed=embed)
     except discord.Forbidden:
-        pass # Ignored if recipient DMs are closed
+        pass
 
     await interaction.response.send_message("Recommendation submitted successfully!", ephemeral=True)
 
-# Fetch token from environment variable or direct string
 TOKEN = os.environ.get("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
 bot.run(TOKEN)
