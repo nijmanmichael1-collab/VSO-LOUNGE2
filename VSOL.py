@@ -12,9 +12,11 @@ database.init_db()
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# IDs setup
 ALLOWED_ROLE_ID = 1474378842520031397
 RECOMMEND_CHANNEL_ID = 1513182544550690910
 
+# --- Helper Roblox API Functions ---
 async def fetch_roblox_user(username: str):
     url = "https://users.roblox.com/v1/usernames/users"
     async with aiohttp.ClientSession() as session:
@@ -36,6 +38,7 @@ async def fetch_roblox_avatar(roblox_id: int):
                     return data["data"][0].get("imageUrl")
     return None
 
+# --- UI Components for Verification ---
 class ConfirmView(discord.ui.View):
     def __init__(self, roblox_username: str, roblox_id: int):
         super().__init__(timeout=60)
@@ -64,11 +67,12 @@ class VerifyModal(discord.ui.Modal, title="Link Roblox Account"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         roblox_username = self.username_input.value
         roblox_id, real_name = await fetch_roblox_user(roblox_username)
 
         if not roblox_id:
-            await interaction.response.send_message("Roblox user not found. Check spelling and try again.", ephemeral=True)
+            await interaction.followup.send("Roblox user not found. Check spelling and try again.")
             return
 
         avatar_url = await fetch_roblox_avatar(roblox_id)
@@ -82,7 +86,7 @@ class VerifyModal(discord.ui.Modal, title="Link Roblox Account"):
             embed.set_thumbnail(url=avatar_url)
 
         view = ConfirmView(real_name, roblox_id)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.followup.send(embed=embed, view=view)
 
 class VerifyPanelView(discord.ui.View):
     def __init__(self):
@@ -92,6 +96,7 @@ class VerifyPanelView(discord.ui.View):
     async def link_roblox(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(VerifyModal())
 
+# --- Commands ---
 @bot.event
 async def on_ready():
     bot.add_view(VerifyPanelView())
@@ -119,14 +124,16 @@ async def verify_error(interaction: discord.Interaction, error: app_commands.App
 
 @bot.tree.command(name="recommend", description="...")
 async def recommend(interaction: discord.Interaction, recommended: discord.Member, reason: str):
+    await interaction.response.defer(ephemeral=True)
+
     user_role_ids = [role.id for role in interaction.user.roles]
     if ALLOWED_ROLE_ID not in user_role_ids:
-        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        await interaction.followup.send("You do not have permission to use this command.")
         return
 
     target_data = database.get_user(recommended.id)
     if not target_data:
-        await interaction.response.send_message("This user has not linked their Roblox account yet!", ephemeral=True)
+        await interaction.followup.send("This user has not linked their Roblox account yet!")
         return
 
     roblox_username, roblox_id = target_data
@@ -149,7 +156,7 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
     if channel:
         await channel.send(embed=embed)
     else:
-        await interaction.response.send_message("Recommendation channel not found.", ephemeral=True)
+        await interaction.followup.send("Recommendation channel not found.")
         return
 
     try:
@@ -157,7 +164,7 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
     except discord.Forbidden:
         pass
 
-    await interaction.response.send_message("Recommendation submitted successfully!", ephemeral=True)
+    await interaction.followup.send("Recommendation submitted successfully!")
 
 TOKEN = os.environ.get("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
 bot.run(TOKEN)
