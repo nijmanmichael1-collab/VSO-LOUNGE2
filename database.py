@@ -1,4 +1,5 @@
 import sqlite3
+import time
 
 def init_db():
     conn = sqlite3.connect("database.db")
@@ -13,11 +14,20 @@ def init_db():
         )
     """)
     
-    # Recommendations table (stores the latest message ID sent to channel)
+    # Recommendations table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS recommendations (
             recommended_id INTEGER PRIMARY KEY,
             message_id INTEGER
+        )
+    """)
+    
+    # Limits table to track weekly recommendation count per recommender
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recommendation_limits (
+            recommender_id INTEGER PRIMARY KEY,
+            count INTEGER,
+            reset_timestamp REAL
         )
     """)
     
@@ -59,3 +69,38 @@ def get_recommendation(recommended_id: int):
     result = cursor.fetchone()
     conn.close()
     return result[0] if result else None
+
+# Weekly limit helper functions
+def check_and_update_limit(recommender_id: int, max_limit: int = 5) -> tuple[bool, str]:
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    now = time.time()
+    one_week_seconds = 7 * 24 * 60 * 60
+
+    cursor.execute("SELECT count, reset_timestamp FROM recommendation_limits WHERE recommender_id = ?", (recommender_id,))
+    row = cursor.fetchone()
+
+    if row is None or now >= row[1]:
+        # Reset limit for the new week
+        new_reset = now + one_week_seconds
+        cursor.execute("""
+            INSERT OR REPLACE INTO recommendation_limits (recommender_id, count, reset_timestamp)
+            VALUES (?, ?, ?)
+        """, (recommender_id, 1, new_reset))
+        conn.commit()
+        conn.close()
+        return True, ""
+    else:
+        current_count, reset_timestamp = row
+        if current_count >= max_limit:
+            conn.close()
+            remaining_hours = int((reset_timestamp - now) // 3600)
+            return False, f"You have reached your limit of 5 recommendations per week. Try again in ~{remaining_hours} hours."
+        
+        # Increment recommendation count
+        cursor.execute("""
+            UPDATE recommendation_limits SET count = count + 1 WHERE recommender_id = ?
+        """, (recommender_id,))
+        conn.commit()
+        conn.close()
+        return True, ""
