@@ -188,4 +188,4 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
 
 # Fetch token from environment variable or direct string
 TOKEN = os.environ.get("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
-bot.run("MTUzNjM0MTU3MjM0ODU1MTIyOA.GoDmRm.FDH3YYqfJc2z3zJDcEP1OVhGLEb4imiPEje1fU")
+bot.run(TOKEN)
