@@ -70,7 +70,6 @@ def get_recommendation(recommended_id: int):
     conn.close()
     return result[0] if result else None
 
-# Weekly limit helper functions
 def check_and_update_limit(recommender_id: int, max_limit: int = 5) -> tuple[bool, str]:
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
@@ -81,7 +80,6 @@ def check_and_update_limit(recommender_id: int, max_limit: int = 5) -> tuple[boo
     row = cursor.fetchone()
 
     if row is None or now >= row[1]:
-        # Reset limit for the new week
         new_reset = now + one_week_seconds
         cursor.execute("""
             INSERT OR REPLACE INTO recommendation_limits (recommender_id, count, reset_timestamp)
@@ -97,7 +95,6 @@ def check_and_update_limit(recommender_id: int, max_limit: int = 5) -> tuple[boo
             remaining_hours = int((reset_timestamp - now) // 3600)
             return False, f"You have reached your limit of 5 recommendations per week. Try again in ~{remaining_hours} hours."
         
-        # Increment recommendation count
         cursor.execute("""
             UPDATE recommendation_limits SET count = count + 1 WHERE recommender_id = ?
         """, (recommender_id,))
