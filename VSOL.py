@@ -20,7 +20,6 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is online and running!")
 
     def log_message(self, format, *args):
-        # Silence console HTTP log spam
         return
 
 def run_port_server():
@@ -28,7 +27,6 @@ def run_port_server():
     server = HTTPServer(("0.0.0.0", port), SimpleHTTPRequestHandler)
     server.serve_forever()
 
-# Start port server in background thread
 threading.Thread(target=run_port_server, daemon=True).start()
 
 # --- Discord Bot Setup ---
@@ -38,7 +36,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 ALLOWED_ROLE_ID = 1474378842520031397
 RECOMMEND_CHANNEL_ID = 1513182544550690910
 
-# Helper Roblox API Functions
+# --- Helper Roblox API Functions ---
 async def fetch_roblox_user(username: str):
     url = "https://users.roblox.com/v1/usernames/users"
     async with aiohttp.ClientSession() as session:
@@ -60,7 +58,7 @@ async def fetch_roblox_avatar(roblox_id: int):
                     return data["data"][0].get("imageUrl")
     return None
 
-# UI Components
+# --- UI Components for Verification ---
 class ConfirmView(discord.ui.View):
     def __init__(self, roblox_username: str, roblox_id: int):
         super().__init__(timeout=60)
@@ -118,13 +116,16 @@ class VerifyPanelView(discord.ui.View):
     async def link_roblox(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(VerifyModal())
 
-# Commands
+# --- Bot Events ---
 @bot.event
 async def on_ready():
     bot.add_view(VerifyPanelView())
     await bot.tree.sync()
     print(f"Logged in as {bot.user}")
 
+# --- Commands ---
+
+# /verify
 @bot.tree.command(name="verify", description="...")
 @app_commands.checks.has_permissions(administrator=True)
 async def verify(interaction: discord.Interaction):
@@ -139,11 +140,7 @@ async def verify(interaction: discord.Interaction):
     await interaction.channel.send(embed=embed, view=view)
     await interaction.response.send_message("Verification panel created!", ephemeral=True)
 
-@verify.error
-async def verify_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("You need admin rights to use this command.", ephemeral=True)
-
+# /recommend
 @bot.tree.command(name="recommend", description="...")
 async def recommend(interaction: discord.Interaction, recommended: discord.Member, reason: str):
     await interaction.response.defer(ephemeral=True)
@@ -176,7 +173,9 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
 
     channel = bot.get_channel(RECOMMEND_CHANNEL_ID)
     if channel:
-        await channel.send(embed=embed)
+        msg = await channel.send(embed=embed)
+        # Store message ID to allow editing on /accept or /decline
+        database.save_recommendation(recommended.id, msg.id)
     else:
         await interaction.followup.send("Recommendation channel not found.")
         return
@@ -187,6 +186,92 @@ async def recommend(interaction: discord.Interaction, recommended: discord.Membe
         pass
 
     await interaction.followup.send("Recommendation submitted successfully!")
+
+# /accept
+@bot.tree.command(name="accept", description="...")
+@app_commands.checks.has_permissions(administrator=True)
+async def accept(interaction: discord.Interaction, user: discord.Member):
+    await interaction.response.defer(ephemeral=True)
+
+    # Check if user has a recommendation embed in channel
+    msg_id = database.get_recommendation(user.id)
+    channel = bot.get_channel(RECOMMEND_CHANNEL_ID)
+
+    if msg_id and channel:
+        try:
+            msg = await channel.fetch_message(msg_id)
+            if msg and msg.embeds:
+                embed = msg.embeds[0]
+                embed.title = f"Accepted by {interaction.user.name}"
+                embed.color = discord.Color.green()
+                await msg.edit(embed=embed)
+        except Exception:
+            pass
+
+    # DM User
+    try:
+        await user.send("🎉 You have been accepted into VSO!")
+    except discord.Forbidden:
+        pass
+
+    await interaction.followup.send(f"Accepted {user.mention} successfully!")
+
+# /decline
+@bot.tree.command(name="decline", description="...")
+@app_commands.checks.has_permissions(administrator=True)
+async def decline(interaction: discord.Interaction, user: discord.Member):
+    await interaction.response.defer(ephemeral=True)
+
+    # Check if user has a recommendation embed in channel
+    msg_id = database.get_recommendation(user.id)
+    channel = bot.get_channel(RECOMMEND_CHANNEL_ID)
+
+    if msg_id and channel:
+        try:
+            msg = await channel.fetch_message(msg_id)
+            if msg and msg.embeds:
+                embed = msg.embeds[0]
+                embed.title = f"Declined by {interaction.user.name}"
+                embed.color = discord.Color.red()
+                await msg.edit(embed=embed)
+        except Exception:
+            pass
+
+    # DM User
+    try:
+        await user.send("You have been declined into VSO.")
+    except discord.Forbidden:
+        pass
+
+    await interaction.followup.send(f"Declined {user.mention}.")
+
+# /say
+@bot.tree.command(name="say", description="...")
+@app_commands.checks.has_permissions(administrator=True)
+async def say(interaction: discord.Interaction, channel: discord.TextChannel, message: str):
+    await channel.send(message)
+    await interaction.response.send_message(f"Message sent to {channel.mention}!", ephemeral=True)
+
+# /dm
+@bot.tree.command(name="dm", description="...")
+@app_commands.checks.has_permissions(administrator=True)
+async def dm(interaction: discord.Interaction, user: discord.Member, message: str):
+    try:
+        await user.send(message)
+        await interaction.response.send_message(f"DM sent to {user.mention}!", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message("Failed to send DM. The user's DMs might be closed.", ephemeral=True)
+
+# Error handlers for missing admin permissions
+@accept.error
+@decline.error
+@say.error
+@dm.error
+@verify.error
+async def admin_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        if not interaction.response.is_done():
+            await interaction.response.send_message("You need admin rights to use this command.", ephemeral=True)
 
 TOKEN = os.environ.get("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
 bot.run(TOKEN)
