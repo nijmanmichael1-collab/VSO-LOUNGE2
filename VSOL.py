@@ -1,4 +1,6 @@
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 import discord
 from discord import app_commands
@@ -9,14 +11,34 @@ import database
 # Initialize Database
 database.init_db()
 
+# --- Built-in HTTP Server to satisfy Render's Port Scan ---
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is online and running!")
+
+    def log_message(self, format, *args):
+        # Silence console HTTP log spam
+        return
+
+def run_port_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), SimpleHTTPRequestHandler)
+    server.serve_forever()
+
+# Start port server in background thread
+threading.Thread(target=run_port_server, daemon=True).start()
+
+# --- Discord Bot Setup ---
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# IDs setup
 ALLOWED_ROLE_ID = 1474378842520031397
 RECOMMEND_CHANNEL_ID = 1513182544550690910
 
-# --- Helper Roblox API Functions ---
+# Helper Roblox API Functions
 async def fetch_roblox_user(username: str):
     url = "https://users.roblox.com/v1/usernames/users"
     async with aiohttp.ClientSession() as session:
@@ -38,7 +60,7 @@ async def fetch_roblox_avatar(roblox_id: int):
                     return data["data"][0].get("imageUrl")
     return None
 
-# --- UI Components for Verification ---
+# UI Components
 class ConfirmView(discord.ui.View):
     def __init__(self, roblox_username: str, roblox_id: int):
         super().__init__(timeout=60)
@@ -96,7 +118,7 @@ class VerifyPanelView(discord.ui.View):
     async def link_roblox(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(VerifyModal())
 
-# --- Commands ---
+# Commands
 @bot.event
 async def on_ready():
     bot.add_view(VerifyPanelView())
